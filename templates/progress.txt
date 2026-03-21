@@ -1,0 +1,39 @@
+LAST UPDATED: [DATE] (Session [N])
+CURRENT PHASE: [PHASE NAME]
+
+## What Happened Last Session
+- [Bullet points of what was accomplished]
+- [Include any decisions made and why]
+
+## Active Work
+<!-- List all active initiatives/experiments/projects with their status -->
+
+### [Initiative 1]
+- Status: [DISCOVER / VALIDATE / BUILD / GROW]
+- Progress: [What's done]
+- Next: [What needs to happen next]
+- Blocked: [Any blockers, or "none"]
+
+### [Initiative 2]
+- Status: [DISCOVER / VALIDATE / BUILD / GROW]
+- Progress: [What's done]
+- Next: [What needs to happen next]
+
+## Infrastructure State
+<!-- Current state of your tools and infrastructure -->
+- [Tool/Service 1]: [State]
+- [Tool/Service 2]: [State]
+
+## Budget
+- Total: $[AMOUNT]
+- Spent: $[AMOUNT]
+- Remaining: $[AMOUNT]
+
+## Immediate Next Steps
+1. [Most important thing to do next session]
+2. [Second priority]
+3. [Third priority]
+
+## Stakeholder Directives
+<!-- Record any pending directives from stakeholders -->
+- [DATE] [DIRECTIVE]: [Description]
