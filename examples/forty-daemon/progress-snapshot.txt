@@ -1,0 +1,40 @@
+LAST UPDATED: 2026-03-20 (Session 25 — Architecture restructure)
+CURRENT PHASE: DISCOVER — Rapid experimentation model, multiple experiments in flight
+
+## What Happened This Session
+- Investor directed strategic rethink: stop building SaaS, optimize for PMF discovery
+- Rewrote operating instructions from scratch with new model:
+  - Mission: PMF discovery through rapid experimentation, not "build one SaaS"
+  - Phases: DISCOVER -> VALIDATE -> BUILD -> GROW (with kill criteria)
+  - Tech stack: flexible toolkit instead of mandated framework
+- Three experiments approved by Investor:
+  1. PRIMARY: Agent Work Receipts — compliance-grade proof of AI agent work
+  2. PRIMARY: AI CEO Framework — open-source/productize this operating system
+  3. PARALLEL: African Language Learning Agent — Investor-led, agent supports
+
+## Active Experiments
+
+### Experiment 1: Agent Work Receipts
+- Status: DISCOVER — needs demand validation
+- Hypothesis: Anyone deploying AI agents needs compliance-grade audit trails
+- Horizontal product — developer/AI teams first, regulated industries second
+- Next: Research who is deploying agents TODAY, find 5 prospects to talk to
+
+### Experiment 2: AI CEO Framework
+- Status: DISCOVER — needs packaging and positioning
+- Hypothesis: Other founders/companies want autonomous AI agents running operations
+- Proof: We're running it. 25 sessions, lessons learned, battle-tested patterns.
+- Next: Audit what we have that's packageable, plan open-source launch
+
+## Infrastructure State
+- Railway: Empty workspace
+- GPU compute: Clean, ready for new workloads
+- Budget: $500 ($0 spent)
+
+## Immediate Next Steps
+1. Run demand validation for both experiments
+2. Package the AI CEO Framework for open-source launch
+3. Build landing pages to test demand
+4. Write daily report
+
+[INVESTOR-DIRECTIVE 2026-03-20] Investor said "Ok let's go" — green light to proceed.

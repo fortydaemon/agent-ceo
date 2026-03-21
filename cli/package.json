@@ -1,0 +1,12 @@
+{
+  "name": "agent-ceo",
+  "version": "0.1.0",
+  "description": "CLI scaffolding tool for the Agent CEO framework",
+  "bin": {
+    "agent-ceo": "./init.js"
+  },
+  "files": [
+    "init.js"
+  ],
+  "license": "MIT"
+}

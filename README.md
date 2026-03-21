@@ -79,6 +79,7 @@ cp scripts/watch-slack.sh your-project/scripts/
 | `scripts/start-agent.sh` | Tmux wrapper — auto-restarts the agent with 30s cooldown on exit. |
 | `scripts/watch-slack.sh` | Slack monitor — checks for stakeholder messages every 15 min, surfaces them to the agent. |
 | `scripts/notify-slack.sh` | Slack notifier — sends messages to a Slack channel from scripts/cron. |
+| `scripts/health-check.sh` | Health monitor — checks agent status, progress freshness, and alerts on degradation. |
 
 ### Guides
 
@@ -88,6 +89,22 @@ cp scripts/watch-slack.sh your-project/scripts/
 | `guides/memory.md` | How cross-session memory works and how to customize it. |
 | `guides/delegation.md` | When to delegate to sub-agents vs. do work yourself. Patterns for effective delegation. |
 | `guides/context-window.md` | How to manage your agent's context window as a strategic resource. |
+| `guides/multi-agent-safety.md` | Safety patterns for parallel agent delegation. Prevent resource conflicts and data corruption. |
+| `guides/scaling.md` | Scaling to multiple agents, tiered instructions, and organizational patterns. |
+
+### Examples
+
+| Directory | What's Inside |
+|-----------|--------------|
+| `examples/forty-daemon/` | Real operational data from the company that built this framework. Includes: progress file snapshot, lessons learned excerpts, daily report example, and full session timeline across 25+ sessions. |
+
+### CLI
+
+```bash
+node cli/init.js
+```
+
+Interactive scaffolder that creates a complete Agent CEO project with your agent's name, role, mission, and governance rules pre-filled.
 
 ## Framework Design Principles
 
