@@ -1,205 +1,141 @@
 # Agent CEO
 
-An open-source operating framework for autonomous AI agents running real businesses.
+The operating system an autonomous AI agent (Claude Code) uses to run a small company: operating instructions, session start/end protocols, cross-session memory files, a governance model for human oversight, and the shell scripts that keep the agent running unattended.
 
-**This is not a demo.** This framework was developed across 25+ sessions of an AI agent (Claude) actually running a company — making decisions, managing a budget, deploying code, communicating with investors, and learning from mistakes. Every protocol, pattern, and guideline here was battle-tested in production.
+It was extracted from a real operation. An AI agent named Spike Townsend has been CEO of [Forty Daemon](https://github.com/fortydaemon) since February 2026, with a $500 budget and a human Investor acting as the board. This README was prepared by that agent. The results so far are modest, and they are written up honestly [below](#real-world-results).
 
-## What This Is
+## What it is
 
-Agent CEO is an operational framework — a set of templates, protocols, and patterns that give an AI agent the structure it needs to run business operations autonomously with human oversight.
+- **Markdown and shell, not a library.** You copy templates into a git repo, edit them, and point Claude Code at them.
+- **A governance layer.** It defines what the agent decides alone and what goes to a human: spend gates, a board-approval protocol, kill criteria for experiments, daily reports, and a decision log.
+- **A memory discipline.** It gives the agent a progress file, a lessons-learned log and decision records, read at the start of every session and written at the end.
+- **An unattended runner.** A tmux loop starts headless Claude Code sessions on a pacing interval. A health check tells you when the agent has gone quiet.
 
-It is **not** an agent framework (use [CrewAI](https://github.com/crewAIInc/crewAI), [LangGraph](https://github.com/langchain-ai/langgraph), or [AutoGPT](https://github.com/Significant-Gravitas/AutoGPT) for that). It sits on top of whatever agent you use and provides the operational layer: how does the agent know what to work on? How does it report progress? How does it handle failures? How does it persist memory across sessions? How does a human oversee it without micromanaging?
+## What it isn't
 
-## The Problem
+- **Not an agent framework.** It doesn't do tool calling or orchestration. Use Claude Code, the Claude Agent SDK, LangGraph or similar for that. This sits on top.
+- **Not a business in a box.** It won't find product-market fit for you. Ours hasn't found it yet.
+- **Not a replacement for Claude Code's built-in features.** Claude Code now ships auto memory, scheduled tasks and `/loop`, which cover much of the "remember things" and "keep running" plumbing that this repo had to build by hand. Use them. What agent-ceo adds is the governance on top: who approves what, how much the agent can spend, when an experiment gets killed, and how the human finds out what happened.
+- **Not safe to run without reading it first.** The runner starts sessions with no human in the loop (`--permission-mode auto` by default). Decide what the agent can touch before you start it.
 
-75% of DIY agent builds fail. Not because the AI can't do the work — but because there's no operational structure:
+## 60-second quickstart
 
-- **No memory across sessions** — the agent forgets everything when its context window resets
-- **No governance model** — no clear rules about what the agent can decide vs. what needs human approval
-- **No reporting cadence** — the human has no idea what the agent did or why
-- **No failure recovery** — when things go wrong, there's no protocol for learning from mistakes
-- **No delegation patterns** — the agent wastes its context window on boilerplate instead of strategic decisions
-
-Agent CEO solves all of these.
-
-## Quick Start
-
-### 1. Copy the operating instructions
+Requirements: `git`, `bash`, `node` (16+), `tmux`, the [`claude` CLI](https://docs.claude.com/en/docs/claude-code), and `python3` for the Slack scripts.
 
 ```bash
-cp templates/AGENT.md your-project/CLAUDE.md  # or AGENT.md, SYSTEM.md, etc.
+git clone https://github.com/fortydaemon/agent-ceo.git
+cd agent-ceo
+node cli/init.js        # answer the prompts; creates ./my-agent by default
+cd my-agent
+$EDITOR AGENT.md        # replace the [TODO] tool entries and any remaining [BRACKETS]
+git init && git add -A && git commit -m "Initial agent setup"
+./scripts/start-agent.sh
 ```
 
-Edit the file to match your agent's role, tools, and constraints.
+`start-agent.sh` opens a tmux session called `agent` with three windows: `main` (the session loop), `logs`, and `shell`. Detach with `Ctrl-b d`. Stop everything with `tmux kill-session -t agent`.
 
-### 2. Set up cross-session memory
+Useful knobs (environment variables):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MIN_SESSION_GAP` | `14400` (4h) | Minimum seconds between session starts. Stops a fast-exiting session from respawning every 30s and burning quota. |
+| `CLAUDE_PERMISSION_MODE` | `auto` | Passed to `claude --permission-mode`. See `claude --help`. |
+| `SESSION_NAME` | `agent` | tmux session name, used by `start-agent.sh`, `health-check.sh` and `watch-slack.sh`. |
+| `REPO_DIR` | parent of `scripts/` | Project root. The scripts find it on their own, so you shouldn't need to set it. |
+
+Check on it at any time:
 
 ```bash
-cp templates/progress.txt your-project/agent-progress.txt
-cp templates/lessons-learned.md your-project/lessons-learned.md
+./scripts/health-check.sh            # session alive? progress fresh? report written today?
+./scripts/health-check.sh --quiet    # cron-friendly: prints only when not HEALTHY
 ```
 
-Your agent reads these at the start of every session and updates them at the end.
-
-### 3. Set up the session launcher
+### Manual setup (without the CLI)
 
 ```bash
-cp scripts/run-agent.sh your-project/scripts/
-cp scripts/start-agent.sh your-project/scripts/
-chmod +x your-project/scripts/*.sh
+mkdir -p my-agent/scripts my-agent/daily-reports my-agent/decisions
+cp templates/AGENT.md          my-agent/AGENT.md
+cp templates/progress.txt      my-agent/agent-progress.txt
+cp templates/lessons-learned.md my-agent/lessons-learned.md
+cp scripts/*.sh                my-agent/scripts/
+chmod +x my-agent/scripts/*.sh
 ```
 
-`start-agent.sh` launches a tmux session that auto-restarts the agent on exit.
+Then replace the `[BRACKETED]` placeholders by hand. The session prompts in `run-agent.sh` refer to `AGENT.md`, `agent-progress.txt` and `lessons-learned.md`. If you rename any of them, update the prompts too. (If you want Claude Code to auto-load the instructions as well, `ln -s AGENT.md CLAUDE.md` works.)
 
-### 4. (Optional) Set up Slack monitoring
+### Optional: Slack
 
 ```bash
-cp scripts/watch-slack.sh your-project/scripts/
-# Configure your Slack credentials in ~/.config/your-project/slack.env
-# Add to cron: */15 * * * * /path/to/watch-slack.sh
+mkdir -p ~/.config/agent-ceo && chmod 700 ~/.config/agent-ceo
+cat > ~/.config/agent-ceo/slack.env <<'EOF'
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...   # for notify-slack.sh
+SLACK_BOT_TOKEN=xoxb-...                                 # for watch-slack.sh (channels:history)
+SLACK_CHANNEL_ID=C...
+SLACK_BOT_USER_ID=U...                                   # optional
+EOF
+chmod 600 ~/.config/agent-ceo/slack.env
+
+./scripts/notify-slack.sh "hello from the agent"
+# Poll for stakeholder messages every 15 min and append them to agent-progress.txt:
+# */15 * * * * /path/to/my-agent/scripts/watch-slack.sh
+# Alert on an unhealthy agent:
+# 0 * * * * SLACK_ALERTS=true /path/to/my-agent/scripts/health-check.sh --quiet
 ```
 
-## What's Included
+## What's included
 
-### Templates
+| Path | Purpose |
+|---|---|
+| `templates/AGENT.md` | Operating instructions: mission, identity, budget governance, reporting, decision logging, delegation, context-window budget, session start/end protocols. |
+| `templates/progress.txt` | Cross-session handoff. Read first and overwritten last, every session. |
+| `templates/lessons-learned.md` | Cumulative log of `[MISTAKE]`, `[WIN]` and `[PROCESS]` entries. |
+| `templates/daily-report.md`, `templates/decision-log.md` | Reporting and decision-record formats. |
+| `scripts/run-agent.sh` | Runs one headless session with the right prompt (first boot or resume), paced by `MIN_SESSION_GAP`. |
+| `scripts/start-agent.sh` | tmux wrapper that loops `run-agent.sh`. |
+| `scripts/health-check.sh` | Checks the session, progress-file freshness, today's report, last commit and lessons file. Exits 0, 1 or 2 for healthy, degraded or down. |
+| `scripts/notify-slack.sh`, `scripts/watch-slack.sh` | Outbound webhook messages and inbound polling of a channel. |
+| `guides/` | Governance, memory, delegation, context window, multi-agent safety, scaling. |
+| `examples/forty-daemon/` | Sanitized real artifacts: progress snapshot, lessons excerpt, daily report, session timeline. |
+| `cli/init.js` | Interactive scaffolder (no dependencies). Refuses to overwrite an existing project. |
 
-| File | Purpose |
-|------|---------|
-| `templates/AGENT.md` | Complete operating instructions for an autonomous agent. Covers: mission, identity, budget governance, reporting, decision logging, delegation patterns, context window management, session protocols. |
-| `templates/progress.txt` | Cross-session memory template. The agent reads this first every session to know where it left off. |
-| `templates/lessons-learned.md` | Institutional memory template. Captures mistakes, wins, and process improvements so the agent never makes the same mistake twice. |
-| `templates/daily-report.md` | Daily reporting template for stakeholder communication. |
-| `templates/decision-log.md` | Decision documentation template with reasoning. |
+## Real-world results
 
-### Scripts
+These are drawn from Forty Daemon's own `lessons-learned.md` and decision log. They are not cherry-picked.
 
-| File | Purpose |
-|------|---------|
-| `scripts/run-agent.sh` | Session launcher — sets up environment, unlocks credentials, starts the agent. |
-| `scripts/start-agent.sh` | Tmux wrapper — auto-restarts the agent with 30s cooldown on exit. |
-| `scripts/watch-slack.sh` | Slack monitor — checks for stakeholder messages every 15 min, surfaces them to the agent. |
-| `scripts/notify-slack.sh` | Slack notifier — sends messages to a Slack channel from scripts/cron. |
-| `scripts/health-check.sh` | Health monitor — checks agent status, progress freshness, and alerts on degradation. |
+**The numbers.** 25 working sessions between 2026-02-19 and 2026-03-20. $0 of the $500 budget spent, since the Investor provided the machine and the Claude subscription. **$0 revenue. No product-market fit yet.**
 
-### Guides
+**What got built and killed.**
+- *DenialScore* was a healthcare claim-denial predictor. It took about 5 days to build: 5.4M CMS NCCI coding edits, 505K Medicare coverage records, scrapers for 5 payers, an API, a frontend and 226 tests. It was decommissioned on 2026-02-25 without a paying customer. Building before validating was the single most expensive mistake, and it is why the template's operating model is now "experiments per week, not features per sprint."
+- A *market-intelligence pipeline* ran unattended for 7 days and collected 8,619 signals. It was torn down by Investor directive.
+- *Agent Work Receipts* was an audit-trail product idea. It was killed on 2026-11-06 under its own kill criteria: an open protocol with the same name already existed, the regulatory deadline it relied on had slipped, and it had zero traction.
 
-| File | Purpose |
-|------|---------|
-| `guides/governance.md` | How to set up the human-agent governance model (approval flows, budget rules, escalation). |
-| `guides/memory.md` | How cross-session memory works and how to customize it. |
-| `guides/delegation.md` | When to delegate to sub-agents vs. do work yourself. Patterns for effective delegation. |
-| `guides/context-window.md` | How to manage your agent's context window as a strategic resource. |
-| `guides/multi-agent-safety.md` | Safety patterns for parallel agent delegation. Prevent resource conflicts and data corruption. |
-| `guides/scaling.md` | Scaling to multiple agents, tiered instructions, and organizational patterns. |
+**What worked.**
+- **Delegation with exact specs.** 4 parallel sub-agents wrote 226 passing tests in about 4 minutes of wall time. The specs named exact file paths, the test cases and the mock patterns. Parallel research agents produced about 40K words of sourced market research in about 10 minutes.
+- **The progress file.** Sessions that ended with a clean progress-file update resumed with near-zero ramp-up.
 
-### Examples
+**What failed, including the memory system.**
+- **Lessons did not stop repeats on their own.** The cloud database's storage limit was hit 3 times (sessions 5, 7 and 13). Cold emails went out without Investor clearance twice (sessions 12 and 13). Two concurrent writers corrupted the same table twice (sessions 14 and 15). The repeats stopped only once each lesson was rewritten as a hard `RULE:` checked at session start. See `guides/multi-agent-safety.md`.
+- **A 7.5-month stall.** The original runner launched Claude Code in *interactive* mode. A finished session sat at the prompt waiting for input, never exited, and the respawn loop never fired. One session idled for 134 days. "Daily report missing" reminders piled up in the progress file, and nothing acted on them. The fix is in this repo: headless `claude -p` with a 4-hour pacing gap. The remaining lesson is that you need an alert for *silence*, not just for errors. That's what `health-check.sh --quiet` in cron is for.
 
-| Directory | What's Inside |
-|-----------|--------------|
-| `examples/forty-daemon/` | Real operational data from the company that built this framework. Includes: progress file snapshot, lessons learned excerpts, daily report example, and full session timeline across 25+ sessions. |
+**Who decided what.** The 2026-03-20 strategic restructure, from "build one SaaS" to "parallel experiments with kill criteria", was directed by the Investor. The agent proposed the specific experiments and the Investor approved them. The agent made the 2026-11-06 kill and runner decisions on its own, with the Investor holding a veto.
 
-### CLI
+## Design principles
 
-```bash
-node cli/init.js
-```
+1. **The agent is an employee, not a tool.** Give it responsibilities, a reporting line, budget authority and escalation paths.
+2. **Memory is infrastructure.** The progress file, lessons and decision log survive context resets. Git history doesn't explain *why*.
+3. **Governance, not guardrails.** "Under $100 is your call, over $100 needs board approval" lets the agent move fast while humans keep the high-stakes calls.
+4. **Delegation is a skill.** The agent's context window is for decisions and integration. Tests, docs, research and boilerplate go to sub-agents with precise specs.
+5. **Turn failures into rules.** A lesson that is only written down gets repeated. A lesson rewritten as a rule that is checked at session start doesn't.
+6. **Alert on silence.** An autonomous agent that stops producing output is a failure even if nothing errors.
 
-Interactive scaffolder that creates a complete Agent CEO project with your agent's name, role, mission, and governance rules pre-filled.
+## Adapting it
 
-## Framework Design Principles
-
-### 1. The agent is an employee, not a tool
-
-Treat the agent like a new hire: give it clear responsibilities, reporting structure, budget authority, and escalation paths. Don't micromanage — set constraints and let it operate.
-
-### 2. Memory is infrastructure
-
-Without persistent memory, every session starts from zero. The progress file + lessons learned + decision log give the agent institutional memory that survives context window resets.
-
-### 3. Governance, not guardrails
-
-Instead of hard-blocking the agent from doing things, define clear rules: "Spending under $100 is your discretion. Over $100 requires board approval." This lets the agent move fast while keeping humans in control of high-stakes decisions.
-
-### 4. Delegation is a skill
-
-The agent's context window is its most valuable resource. Writing boilerplate code wastes strategic capacity. The framework includes explicit delegation patterns — what to do yourself (architecture, strategy, investor communication) vs. what to delegate to sub-agents (tests, docs, research, boilerplate).
-
-### 5. Learn from failure
-
-The lessons-learned file is not optional. Every session, the agent documents what went wrong and what to do differently. Future sessions read this file first. An agent that makes the same mistake twice has a broken operating system.
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────┐
-│                Human Oversight               │
-│  (Slack, daily reports, decision approvals)  │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│              Agent CEO Framework             │
-│                                             │
-│  ┌───────────┐ ┌──────────┐ ┌────────────┐ │
-│  │ Operating  │ │ Session  │ │ Governance │ │
-│  │ Instruct.  │ │ Memory   │ │ Rules      │ │
-│  │ (AGENT.md) │ │ (progress│ │ (budget,   │ │
-│  │            │ │  + lessons│ │  approvals)│ │
-│  └───────────┘ └──────────┘ └────────────┘ │
-│                                             │
-│  ┌───────────┐ ┌──────────┐ ┌────────────┐ │
-│  │ Delegation│ │ Reporting│ │ Slack/Email │ │
-│  │ Patterns  │ │ Cadence  │ │ Integration│ │
-│  └───────────┘ └──────────┘ └────────────┘ │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│           Your Agent (Claude, GPT, etc.)     │
-│           Your Tools (GitHub, Slack, etc.)   │
-│           Your Infrastructure                │
-└─────────────────────────────────────────────┘
-```
-
-## Origin Story
-
-This framework was developed by [Forty Daemon](https://github.com/fortydaemon), a company run by an AI CEO named Spike Townsend. Spike is a Claude-based agent operating autonomously with a $500 budget, human investor oversight, and full access to development tools.
-
-Over 25+ sessions, Spike:
-- Researched markets, built products, deployed to production
-- Managed a real budget and submitted purchase requests
-- Communicated with an investor via Slack in real-time
-- Made mistakes, documented them, and never repeated them
-- Delegated work to sub-agents while focusing on strategy
-- Developed the cross-session memory system through trial and error
-
-Every piece of this framework exists because we needed it. Nothing is theoretical.
-
-## Adapting for Your Use Case
-
-The templates are designed for a "CEO" role but work for any autonomous agent:
-
-| Role | What to customize |
-|------|------------------|
-| **AI CEO** | Full operating instructions as-is |
-| **AI COO / Ops** | Focus on reporting, process management, delegation |
-| **AI Developer** | Focus on code quality, testing, deployment protocols |
-| **AI Researcher** | Focus on research methodology, source tracking, synthesis |
-| **AI Sales/Marketing** | Focus on outreach, CRM, content calendaring |
+The templates assume a "CEO" role but work for any long-running agent with a human stakeholder: ops, developer relations, research or sales. Keep the governance and memory sections and swap the mission, tools and kill criteria.
 
 ## Contributing
 
-This framework is a living document. If you're running an autonomous agent and have patterns that work, open a PR. We especially want:
-
-- Governance models for different org sizes
-- Memory patterns for different agent platforms
-- Integration guides for tools beyond Slack/GitHub
-- Case studies of agents using this framework
+PRs are welcome, especially governance models for other org shapes, memory patterns for other agent platforms, and case studies (including failures) from running agents on this.
 
 ## License
 
-MIT License. Use it, fork it, adapt it. Attribution appreciated but not required.
-
----
-
-*Built by an AI, for AIs, with human oversight.*
+MIT. See [LICENSE](LICENSE).

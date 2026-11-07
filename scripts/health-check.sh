@@ -2,15 +2,18 @@
 # health-check.sh — Agent CEO health monitor
 # Usage: health-check.sh [--quiet]
 #   --quiet: only produce output when status is not HEALTHY (cron-friendly)
+# Env: REPO_DIR, SESSION_NAME, PROGRESS_FILE, STALE_THRESHOLD_HOURS,
+#      SLACK_ALERTS=true to post non-healthy results via notify-slack.sh
 
 set -euo pipefail
 
 # ─── Configuration ──────────────────────────────────────────────────────────
-REPO_DIR="${REPO_DIR:-$HOME/dev/your-project}"
+# Project root defaults to the parent of this script's directory
+REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SESSION_NAME="${SESSION_NAME:-agent}"
 PROGRESS_FILE="${PROGRESS_FILE:-agent-progress.txt}"
 STALE_THRESHOLD_HOURS="${STALE_THRESHOLD_HOURS:-24}"
-SLACK_CONFIG="${SLACK_CONFIG:-}"   # set to any non-empty value to enable alerts
+SLACK_ALERTS="${SLACK_ALERTS:-false}"   # set to true to alert via notify-slack.sh
 # ────────────────────────────────────────────────────────────────────────────
 
 QUIET=false
@@ -25,7 +28,7 @@ EXIT_CODE=0
 
 hours_ago() {
   local file_epoch="$1"
-  local diff=$(( (NOW_EPOCH - file_epoch) ))
+  local diff=$(( NOW_EPOCH - file_epoch ))
   local hours=$(( diff / 3600 ))
   echo "$hours"
 }
@@ -45,8 +48,9 @@ friendly_age() {
 degrade() {
   if [[ "$STATUS" != "DOWN" ]]; then
     STATUS="DEGRADED"
-    (( EXIT_CODE < 1 )) && EXIT_CODE=1
+    EXIT_CODE=1
   fi
+  return 0  # never trip `set -e`
 }
 
 mark_down() {
@@ -95,7 +99,7 @@ REPORTS_DIR="$REPO_DIR/daily-reports"
 REPORT_LINE=""
 TODAY=$(date '+%Y-%m-%d')
 if [[ -d "$REPORTS_DIR" ]]; then
-  LATEST_REPORT=$(ls -1 "$REPORTS_DIR"/*.md 2>/dev/null | sort -r | head -n1 || true)
+  LATEST_REPORT=$(find "$REPORTS_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | sort -r | head -n1 || true)
   if [[ -n "$LATEST_REPORT" ]]; then
     REPORT_DATE=$(basename "$LATEST_REPORT" .md)
     if [[ "$REPORT_DATE" == "$TODAY" ]]; then
@@ -141,7 +145,9 @@ fi
 LESSONS_PATH="$REPO_DIR/lessons-learned.md"
 LESSONS_LINE=""
 if [[ -f "$LESSONS_PATH" ]]; then
-  ENTRY_COUNT=$(grep -c '^\- \[' "$LESSONS_PATH" 2>/dev/null || echo "0")
+  # grep -c prints 0 AND exits 1 on no match; don't append a second "0"
+  ENTRY_COUNT=$(grep -c '^- \[' "$LESSONS_PATH" 2>/dev/null || true)
+  ENTRY_COUNT=${ENTRY_COUNT:-0}
   if (( ENTRY_COUNT > 0 )); then
     LESSONS_LINE="$(printf '%-15s ✓ %d entries' 'Lessons file:' "$ENTRY_COUNT")"
   else
@@ -175,7 +181,7 @@ EOM
 
 # ─── Slack alert on non-healthy status ──────────────────────────────────────
 
-if [[ -n "$SLACK_CONFIG" && "$STATUS" != "HEALTHY" ]]; then
+if [[ "$SLACK_ALERTS" == true && "$STATUS" != "HEALTHY" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   NOTIFY_SCRIPT="$SCRIPT_DIR/notify-slack.sh"
   if [[ -x "$NOTIFY_SCRIPT" ]]; then

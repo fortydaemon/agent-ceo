@@ -7,53 +7,77 @@ const readline = require('readline');
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
+  terminal: process.stdin.isTTY === true,
 });
 
-function ask(question, defaultValue) {
-  return new Promise((resolve) => {
-    const suffix = defaultValue ? ` (${defaultValue})` : '';
-    rl.question(`${question}${suffix}: `, (answer) => {
-      const value = answer.trim() || defaultValue || '';
-      resolve(value);
-    });
-  });
+// Line queue instead of rl.question(): rl.question() drops buffered lines when
+// answers are piped in (e.g. `printf '...' | node cli/init.js`), which made the
+// CLI exit 0 having created nothing.
+const pendingLines = [];
+const waiters = [];
+let inputClosed = false;
+rl.on('line', (line) => {
+  if (waiters.length) waiters.shift()(line);
+  else pendingLines.push(line);
+});
+rl.on('close', () => {
+  inputClosed = true;
+  while (waiters.length) waiters.shift()(null);
+});
+
+function readLine(promptText) {
+  process.stdout.write(promptText);
+  if (pendingLines.length) return Promise.resolve(pendingLines.shift());
+  if (inputClosed) return Promise.resolve(null);
+  return new Promise((resolve) => waiters.push(resolve));
 }
 
-function askRequired(question) {
-  return new Promise((resolve) => {
-    const prompt = () => {
-      rl.question(`${question}: `, (answer) => {
-        const value = answer.trim();
-        if (!value) {
-          console.log('  This field is required.');
-          prompt();
-        } else {
-          resolve(value);
-        }
-      });
-    };
-    prompt();
-  });
+// Echo piped answers so the transcript is readable
+function echo(answer) {
+  if (!process.stdin.isTTY) console.log(answer === null ? '' : answer);
 }
 
-function askChoice(question, choices, defaultValue) {
-  return new Promise((resolve) => {
-    const choiceStr = choices
-      .map((c) => (c === defaultValue ? `[${c}]` : c))
-      .join(' / ');
-    const prompt = () => {
-      rl.question(`${question} (${choiceStr}): `, (answer) => {
-        const value = answer.trim() || defaultValue;
-        if (!choices.includes(value)) {
-          console.log(`  Please choose one of: ${choices.join(', ')}`);
-          prompt();
-        } else {
-          resolve(value);
-        }
-      });
-    };
-    prompt();
-  });
+async function ask(question, defaultValue) {
+  const suffix = defaultValue ? ` (${defaultValue})` : '';
+  const answer = await readLine(`${question}${suffix}: `);
+  echo(answer);
+  if (answer === null) return defaultValue || '';
+  return answer.trim() || defaultValue || '';
+}
+
+async function askRequired(question) {
+  for (;;) {
+    const answer = await readLine(`${question}: `);
+    echo(answer);
+    if (answer === null) {
+      console.error(`Error: input ended before "${question}" was answered.`);
+      process.exit(1);
+    }
+    if (answer.trim()) return answer.trim();
+    console.log('  This field is required.');
+  }
+}
+
+async function askChoice(question, choices, defaultValue) {
+  const choiceStr = choices
+    .map((c) => (c === defaultValue ? `[${c}]` : c))
+    .join(' / ');
+  for (;;) {
+    const answer = await readLine(`${question} (${choiceStr}): `);
+    echo(answer);
+    if (answer === null) return defaultValue;
+    const value = answer.trim() || defaultValue;
+    const match = choices.find((c) => c.toLowerCase() === value.toLowerCase());
+    if (match) return match;
+    console.log(`  Please choose one of: ${choices.join(', ')}`);
+  }
+}
+
+function localDate() {
+  // toISOString() is UTC, which yields tomorrow's date in the evening in the Americas
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function readTemplate(relativePath, description) {
@@ -112,7 +136,7 @@ async function main() {
     ['Slack', 'Email', 'GitHub Issues'],
     'Slack'
   );
-  const outputDir = await ask('Output directory', process.cwd());
+  const outputDir = await ask('Output directory', path.join(process.cwd(), 'my-agent'));
 
   rl.close();
 
@@ -120,6 +144,16 @@ async function main() {
   console.log('Creating files...');
 
   const resolvedOutput = path.resolve(outputDir);
+
+  // Never scaffold over an existing project (or over this framework repo itself)
+  const existing = ['AGENT.md', 'agent-progress.txt', 'lessons-learned.md']
+    .filter((f) => fs.existsSync(path.join(resolvedOutput, f)));
+  if (existing.length || resolvedOutput === path.resolve(__dirname, '..')) {
+    console.error(`  Refusing to overwrite: ${resolvedOutput}`);
+    if (existing.length) console.error(`  Already contains: ${existing.join(', ')}`);
+    console.error('  Choose an empty or new output directory.');
+    process.exit(1);
+  }
 
   // Strip dollar signs for numeric placeholders
   const budgetNum = budget.replace(/^\$/, '');
@@ -143,10 +177,11 @@ async function main() {
       '[TOOL 2]': '[TODO: Add your second tool]',
       '[TOOL 3]': '[TODO: Add your third tool]',
       '[COMMUNICATION CHANNEL]': channel,
+      '[Slack / Email / GitHub Issues / etc.]': channel,
       '[LIST ACCESS METHODS]': 'repo and communication',
       '[PROGRESS FILE]': 'agent-progress.txt',
       '[LESSONS LEARNED FILE]': 'lessons-learned.md',
-      '[DATE]': new Date().toISOString().split('T')[0],
+      '[DATE]': localDate(),
       '[DIRECTIVE]': '[none yet]',
     });
     writeFile(path.join(resolvedOutput, 'AGENT.md'), replaced);
@@ -156,8 +191,11 @@ async function main() {
   // agent-progress.txt
   const progressTxt = readTemplate('templates/progress.txt', 'progress template');
   if (progressTxt) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDate();
     const replaced = replaceBrackets(progressTxt, {
+      // Specific budget lines first, before the generic [AMOUNT] replacement
+      'Spent: $[AMOUNT]': 'Spent: $0',
+      'Remaining: $[AMOUNT]': `Remaining: $${budgetNum}`,
       '[DATE]': today,
       '[N]': '1',
       '[PHASE NAME]': 'DISCOVER',
@@ -168,7 +206,7 @@ async function main() {
       "[What's done]": 'Project scaffolded',
       '[What needs to happen next]': 'Begin discovery phase',
       '[Any blockers, or "none"]': 'none',
-      '[Initiative 2]': '',
+      '[Initiative 2]': '[TODO: second initiative, or delete this section]',
       '[Tool/Service 1]': '[TODO]',
       '[State]': '[TODO]',
       '[Tool/Service 2]': '[TODO]',
@@ -198,28 +236,16 @@ async function main() {
   writeGitkeep(path.join(resolvedOutput, 'logs'));
   console.log('  logs/.gitkeep');
 
-  // scripts/run-agent.sh
-  const runAgent = readTemplate('scripts/run-agent.sh', 'run-agent.sh');
-  if (runAgent) {
-    const replaced = runAgent.replace(
-      /REPO_DIR=~\/dev\/your-project/g,
-      `REPO_DIR=${resolvedOutput}`
-    );
-    const scriptPath = path.join(resolvedOutput, 'scripts', 'run-agent.sh');
-    writeFile(scriptPath, replaced);
-    console.log('  scripts/run-agent.sh');
-  }
-
-  // scripts/start-agent.sh
-  const startAgent = readTemplate('scripts/start-agent.sh', 'start-agent.sh');
-  if (startAgent) {
-    const replaced = startAgent.replace(
-      /REPO_DIR=~\/dev\/your-project/g,
-      `REPO_DIR=${resolvedOutput}`
-    );
-    const scriptPath = path.join(resolvedOutput, 'scripts', 'start-agent.sh');
-    writeFile(scriptPath, replaced);
-    console.log('  scripts/start-agent.sh');
+  // scripts/ — they locate the project root from their own path, so no edits needed
+  const scripts = ['run-agent.sh', 'start-agent.sh', 'health-check.sh', 'notify-slack.sh', 'watch-slack.sh'];
+  for (const script of scripts) {
+    const content = readTemplate(`scripts/${script}`, script);
+    if (content) {
+      const scriptPath = path.join(resolvedOutput, 'scripts', script);
+      writeFile(scriptPath, content);
+      fs.chmodSync(scriptPath, 0o755);
+      console.log(`  scripts/${script}`);
+    }
   }
 
   // .gitignore
@@ -234,16 +260,16 @@ async function main() {
   console.log('Agent CEO initialized!');
   console.log('');
   console.log('Created:');
-  console.log('  AGENT.md              \u2014 Operating instructions (customize this)');
-  console.log('  agent-progress.txt    \u2014 Cross-session memory');
-  console.log('  lessons-learned.md    \u2014 Institutional memory');
-  console.log('  scripts/run-agent.sh  \u2014 Session launcher');
-  console.log('  scripts/start-agent.sh \u2014 Auto-restart wrapper');
+  console.log('  AGENT.md              — Operating instructions (customize this)');
+  console.log('  agent-progress.txt    — Cross-session memory');
+  console.log('  lessons-learned.md    — Institutional memory');
+  console.log('  scripts/              — Launcher, restart loop, health check, Slack helpers');
   console.log('');
   console.log('Next steps:');
-  console.log('  1. Edit AGENT.md with your specific tools and workflows');
-  console.log('  2. chmod +x scripts/*.sh');
-  console.log('  3. ./scripts/start-agent.sh to launch');
+  console.log(`  1. cd ${resolvedOutput}`);
+  console.log('  2. Edit AGENT.md: fill in the [TODO] tools and any remaining [BRACKETS]');
+  console.log('  3. git init && git add -A && git commit -m "Initial agent setup"');
+  console.log('  4. ./scripts/start-agent.sh   (needs tmux and the claude CLI)');
   console.log('');
 }
 
