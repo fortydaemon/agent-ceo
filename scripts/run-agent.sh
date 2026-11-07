@@ -55,6 +55,12 @@ fi
 
 # Pace sessions
 STAMP_FILE="$REPO_DIR/logs/.last-session-start"
+# A session that started before the current boot was killed by the reboot, not finished,
+# so skip the wait after a reboot. (Linux only; elsewhere pacing applies as usual.)
+if [ -f "$STAMP_FILE" ] && [ -r /proc/uptime ]; then
+  BOOT_TIME=$(( $(date +%s) - $(cut -d. -f1 /proc/uptime) ))
+  [ "$(cat "$STAMP_FILE")" -lt "$BOOT_TIME" ] && rm -f "$STAMP_FILE"
+fi
 if [ -f "$STAMP_FILE" ]; then
   ELAPSED=$(( $(date +%s) - $(cat "$STAMP_FILE") ))
   if [ "$ELAPSED" -lt "$MIN_SESSION_GAP" ]; then
