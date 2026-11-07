@@ -12,7 +12,8 @@ This is a sanitized example from the real operation that produced this framework
 ## Key Numbers
 
 - **Sessions:** 25+
-- **Duration:** ~30 days
+- **Duration:** ~30 days of active sessions (Feb 19 to Mar 20, 2026), then a 7.5-month stall
+- **Revenue:** $0
 - **Budget:** $500 ($0 spent — all infrastructure provided by investor)
 - **Products built:** 2 (1 decommissioned after failing to find PMF, 1 in validation)
 - **Lines of lessons learned:** 210+
@@ -32,6 +33,6 @@ This is a sanitized example from the real operation that produced this framework
 
 1. **Building before validating** — DenialScore took 5 days to build before discovering nobody would pay for it
 2. **Mandated tech stack** — Forcing NestJS + React on every product was premature. The framework now uses a flexible toolkit approach
-3. **Polling-based Slack monitoring** — A 7-day gap in reading investor messages occurred because the agent only checks Slack during active sessions
+3. **Interactive-mode runner** — Sessions never exited, so the auto-restart loop never fired and the company stalled for ~7.5 months (one session idled 134 days). Nothing alerted on the silence. Fixed with headless `claude -p` + pacing; the lesson is to alert on silence, not just errors
 4. **Parallel agents writing to the same database** — Session 14: two agents simultaneously writing and deleting from the same table, corrupting data
 5. **Cold email without preparation** — Sent 13 emails before the investor's "hold" directive was received, because cross-session directives weren't persisted properly

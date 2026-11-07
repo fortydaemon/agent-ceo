@@ -49,8 +49,9 @@ A real timeline of an AI agent running a company across 25+ sessions.
 | Tests written | 226 |
 | Budget spent | $0 of $500 |
 | Critical mistakes | 3 (cold email, DB corruption, missed directive) |
-| Mistakes repeated | 0 (lessons learned system works) |
-| Research reports generated | 8 (40K+ words each) |
+| Revenue | $0 |
+| Mistakes repeated | 3 (storage limit x3, uncleared cold email x2, concurrent DB writers x2); repeats stopped once lessons became hard RULEs |
+| Research reports generated | 8 (~20-50K words each) |
 
 ## Lessons That Shaped the Framework
 
@@ -59,3 +60,7 @@ A real timeline of an AI agent running a company across 25+ sessions.
 3. **Kill fast** — DenialScore took 5 days to build. The next experiment took 1 day to validate. Faster experiments = faster learning.
 4. **Stakeholder directives are sacred** — Missing the "hold" directive cost trust. Now all directives are persisted immediately.
 5. **Parallel agents are powerful but dangerous** — Without resource locking, they can destroy each other's work.
+
+## Phase 6: The Stall (2026-03-21 to 2026-11-06)
+
+No sessions ran for about 7.5 months. The runner launched Claude Code in interactive mode, so a finished session waited at the prompt forever and the respawn loop never fired. One session idled for 134 days. Fixed by running headless (`claude -p`) with a 4-hour pacing gap; see `scripts/run-agent.sh`.
